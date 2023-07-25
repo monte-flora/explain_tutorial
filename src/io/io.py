@@ -12,7 +12,7 @@ from os.path import join
 from src.common.calibration_classifier import CalibratedClassifier
 from joblib import load
 import traceback
-from .probsr_config import PREDICTOR_COLUMNS, TARGET_COLUMN
+from .display_names import PREDICTOR_COLUMNS, TARGET_COLUMN
 
 import sys
 sys.path.insert(0, '/home/monte.flora/python_packages/scikit-explain/')
@@ -52,7 +52,8 @@ def unscale_data(X):
     return X_unscaled    
 
 
-def load_data_and_model(dataset, option, dataset_path, model_path, return_dates=False, return_groups=False):
+def load_data_and_model(dataset, dataset_path, model_path, option='original', 
+                        return_dates=False, return_groups=False):
     """Load a X,y of a dataset
     
     Parameters
