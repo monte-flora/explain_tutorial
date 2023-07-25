@@ -52,7 +52,7 @@ def unscale_data(X):
     return X_unscaled    
 
 
-def load_data_and_model(dataset, dataset_path, model_path, option='original', 
+def load_data_and_model(dataset, dataset_path, model_path, 
                         return_dates=False, return_groups=False):
     """Load a X,y of a dataset
     
@@ -71,27 +71,20 @@ def load_data_and_model(dataset, dataset_path, model_path, option='original',
     """
     # For this study, we only used the FIRST HOUR dataset from Flora et al. (2021)
     TIME = 'first_hour'
+    option='original'
     
     if dataset == 'road_surface':
         est_name = 'Random Forest'
         
-        train_df = pd.read_csv(os.path.join(dataset_path, 'probsr_training_data.csv'))
-        if option == 'original':
-            calibrator =  load(os.path.join(model_path, 'JTTI_ProbSR_RandomForest_Isotonic.pkl'))
-            model = load(os.path.join(model_path,'JTTI_ProbSR_RandomForest.pkl'))
-            # Just load the RF model so we can use tree interpreter. 
-            #model = CalibratedClassifier(rf_orig, calibrator)
-            X = train_df[PREDICTOR_COLUMNS].astype(float)
-            y = train_df[TARGET_COLUMN].astype(float).values
-        else:
-            model_name = os.path.join(model_path, f'RandomForest_manualfeatures_12.joblib')
-            data = load(model_name)
-            model = data['model']
-            # Just load the RF model
-            ##model = model.base_estimator.named_steps['model']
-            X = train_df[data['features']].astype(float)
-            y = train_df[TARGET_COLUMN].astype(float).values
-            
+        train_df = pd.read_csv(os.path.join(dataset_path, 'road_surface_dataset.csv'))
+        calibrator =  load(os.path.join(model_path, 'JTTI_ProbSR_RandomForest_Isotonic.pkl'))
+        model = load(os.path.join(model_path,'JTTI_ProbSR_RandomForest.pkl'))
+        
+        # Just load the RF model so we can use tree interpreter. 
+        #model = CalibratedClassifier(rf_orig, calibrator)
+        X = train_df[PREDICTOR_COLUMNS].astype(float)
+        y = train_df[TARGET_COLUMN].astype(float).values
+        
         groups = {'Temperature': ['dwpt2m', 'sfc_temp', 'temp2m', 'hrrr_dT'],
                   
                   'Freezing Duration'  : ['sfcT_hrs_ab_frez', 'sfcT_hrs_bl_frez',  
@@ -105,14 +98,12 @@ def load_data_and_model(dataset, dataset_path, model_path, option='original',
             
     elif dataset == 'lightning':
         est_name = 'Neural Network'
-        train_df = pd.read_csv(
-            '/home/monte.flora/python_packages/tai4es-trustathon-2022/severe/datasets/lowres_features_train.csv')
+        train_df = pd.read_csv(os.path.join(dataset_path, 'lightning_data.csv'))
+        model = load(os.path.join(model_path,'NN_classification.joblib'))
         features  = [f for f in train_df.columns if 'label' not in f]
         X = train_df[features]
         X = unscale_data(X)
         y = train_df['label_class']
-        model = load('/home/monte.flora/python_packages/tai4es-trustathon-2022/severe/models/NN_classification.joblib')
-        
         groups = {'IR' : ['q000_ir', 'q001_ir', 'q010_ir', 'q025_ir', 'q050_ir', 'q075_ir',
                            'q090_ir', 'q099_ir', 'q100_ir',],
                   
@@ -128,27 +119,12 @@ def load_data_and_model(dataset, dataset_path, model_path, option='original',
          }
         
     elif dataset == 'severe_wind':
-        est_name = 'LogisticRegression'
-        opt_tag = '' if option == 'original' else 'L1_based_feature_selection_with_manual'
-        df = pd.read_feather(os.path.join(dataset_path, 
-                             f'original_{TIME}_training_matched_to_{dataset}_0km_data.feather'))
-    
-        # Load Model
-        model_path = os.path.join(model_path,
-                                  f'LogisticRegression_first_hour_{dataset}_under_standard_{opt_tag}.pkl')
-        data = load(model_path)
-        model = data['model']
-        X = df[data['features']].astype(float)
-        y = df[f'matched_to_{dataset}_0km'].astype(float).values
-        dates = df['Run Date'].values
-        fti = df['FCST_TIME_IDX'].values
-    
-    elif dataset == 'new_severe_wind':
         est_name = 'NewLogisticRegression'
         
-        data = load(
-            '/work/mflora/ML_DATA/NEW_ML_MODELS/LogisticRegression_wind_severe_0km_None_first_hour_realtime.joblib')
+        fname = os.path.join(model_path,'LogisticRegression_wind_severe_0km_None_first_hour_realtime.joblib')
         
+        data = load(fname)
+        # The training dataset is saved with the model.
         model = data['model']
         X,y = data['X'], data['y']
         
@@ -234,9 +210,7 @@ def load_xai_data(dataset, option='original', adjust_scores=True, kept_all=False
                 methods.remove('coefs')
             except:
                 pass
-    if dataset == 'severe_wind':
-        name =  'LogisticRegression'
-    elif dataset == 'lightning':
+    if dataset == 'lightning':
         name = 'Neural Network'
     elif dataset == 'new_severe_wind':
         name =  'NewLogisticRegression'
