@@ -42,7 +42,7 @@ class GoogleDriveIO:
         """
         file_id = self.find_file_id_by_title(title)
         if file_id:
-            download_file_by_id(file_id, filename)
+            self.download_file_by_id(file_id, filename)
         else:
             print(f"File with title: {title} not found.")
             
