@@ -17,7 +17,7 @@ import pandas as pd
 import numpy as np
 
 # Internal packages
-from .common.calibration_classifier import CalibratedClassifier
+from ..common.calibration_classifier import CalibratedClassifier
 from .display_names import PREDICTOR_COLUMNS, TARGET_COLUMN
 
 def unscale_data(X):
