@@ -8,6 +8,8 @@ import os
 from glob import glob 
 from os.path import join
 import traceback
+import subprocess
+import zipfile
 
 # Third party python packages
 from joblib import load
@@ -33,6 +35,35 @@ def unscale_data(X):
     return X_unscaled    
 
 
+# The data fetching from zenodo can make 10 minutes or more. 
+def fetch_zenodo():
+    # Fetch the data and models from the Zenodo DOI. 
+    print('Fetching data from Zenodo...')
+    command = "python -m zenodo_get https://doi.org/10.5281/zenodo.8184201"   
+    result = subprocess.run(command, shell=True)
+    
+    # Path to the ZIP file
+    print('Unzipping the files...')
+    zip_file_paths = ["models.zip", "datasets.zip"]
+    for path in zip_file_paths: 
+    
+        # Get the directory where the ZIP file is located
+        extracted_dir = os.path.dirname(path)
+
+        # Open the ZIP file and extract its contents
+        with zipfile.ZipFile(path, 'r') as zip_ref:
+            zip_ref.extractall(extracted_dir)
+
+    print('ZIP file extracted successfully.')
+    
+    # Move all the ML models to a newly created "models" directory. 
+    if not os.path.exists("models"):
+        os.mkdir ('models')
+
+    subprocess.run("mv *.joblib models/", shell=True)
+    subprocess.run("mv *.pkl models/", shell=True)
+
+
 def load_data_and_model(dataset, dataset_path, model_path, return_groups=False):
     """Load a prefit scikit-learn estimator and its training dataset . 
         
@@ -42,7 +73,7 @@ def load_data_and_model(dataset, dataset_path, model_path, return_groups=False):
             Temperature Nowcast and Forecast Using Machine Learning. Wea. Forecasting, 35, 
             1845–1863, https://doi.org/10.1175/WAF-D-19-0159.1.
     
-    [2]
+    [2] 
     
     [3]
     
