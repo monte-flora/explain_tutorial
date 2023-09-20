@@ -3,39 +3,20 @@
 # Author: monte-flora 
 # Email : monte.flora@noaa.gov
 ###########################################################
-
-import pandas as pd
-import numpy as np
+# Built-in Python packages
 import os
 from glob import glob 
 from os.path import join
-from src.common.calibration_classifier import CalibratedClassifier
-from joblib import load
 import traceback
+
+# Third party python packages
+from joblib import load
+import pandas as pd
+import numpy as np
+
+# Internal packages
+from src.common.calibration_classifier import CalibratedClassifier
 from .display_names import PREDICTOR_COLUMNS, TARGET_COLUMN
-
-import sys
-sys.path.insert(0, '/home/monte.flora/python_packages/scikit-explain/')
-import skexplain
-
-LABELS = {'backward_singlepass' : 'BSP', 
-                       'backward_multipass' : 'BMP', 
-                       'forward_singlepass' : 'FSP', 
-                       'forward_multipass' : 'FMP', 
-                       'sobol_total' : 'SBL',
-                       'sage' : 'SAGE', 
-                       'coefs': 'COEFS', 
-                       'shap_sum' : 'SHAP', 
-                       'shap' : 'SHAP', 
-                       'ale_variance' : 'ALE',
-                       'pd_variance' : 'PD', 
-                       'ale' : 'ALE',
-                       'pd' : 'PD', 
-                       'lime' : 'LIME', 
-                       'tree_interpreter' : 'TI',
-                       'gini' : 'GINI', 
-             }
-
 
 def unscale_data(X):
     """Unscale the dataset"""
@@ -52,36 +33,53 @@ def unscale_data(X):
     return X_unscaled    
 
 
-def load_data_and_model(dataset, dataset_path, model_path, 
-                        return_dates=False, return_groups=False):
-    """Load a X,y of a dataset
+def load_data_and_model(dataset, dataset_path, model_path, return_groups=False):
+    """Load a prefit scikit-learn estimator and its training dataset . 
+        
+    References
+    ------------------
+    [1] Handler, S. L., H. D. Reeves, and A. McGovern, 2020: Development of a Probabilistic Subfreezing Road 
+            Temperature Nowcast and Forecast Using Machine Learning. Wea. Forecasting, 35, 
+            1845–1863, https://doi.org/10.1175/WAF-D-19-0159.1.
+    
+    [2]
+    
+    [3]
+    
     
     Parameters
     ------------
-    dataset : 'road_surface', 'tornado', 'severe_hail', 'severe_wind'
-    option : 'original', 'reduced'
+    dataset : 'road_surface', 'severe_wind', or 'lightning'
+        String identifier of the 3 available datasets/models
+        
+        'road_surface' : Random forest; inputs described in Handler et al. (2020)[1]
+        'lightning' : Neural Network; inputs described in 
+        'severe_wind' : Logistic Regression; inputs described in 
+    
     dataset_path : path-like
-        Base path to the ML dataset dir
+        Parent directory path where the datasets are stored.
+    
     model_path : path-like 
-        Base path to the ML model dir
+        Parent directory path where the ML models are stored.
+
+    return_groups : boolean (default=False) 
+        If True, return a dictionary indicating how features are grouped 
+        for the grouped feature importance. Used for the grouped
+        SAGE computation. 
 
     Returns
     ------------
-    model, X, y
+        (est_name, model) : 2-tuple of the estimator name and prefit scikit-learn estimator
+                            Neccesary input into scikit-explain 
+        X : training inputs 
+        y : training targets
     """
-    # For this study, we only used the FIRST HOUR dataset from Flora et al. (2021)
-    TIME = 'first_hour'
-    option='original'
-    
     if dataset == 'road_surface':
         est_name = 'Random Forest'
-        
         train_df = pd.read_csv(os.path.join(dataset_path, 'road_surface_dataset.csv'))
         calibrator =  load(os.path.join(model_path, 'JTTI_ProbSR_RandomForest_Isotonic.pkl'))
         model = load(os.path.join(model_path,'JTTI_ProbSR_RandomForest.pkl'))
         
-        # Just load the RF model so we can use tree interpreter. 
-        #model = CalibratedClassifier(rf_orig, calibrator)
         X = train_df[PREDICTOR_COLUMNS].astype(float)
         y = train_df[TARGET_COLUMN].astype(float).values
         
@@ -98,7 +96,7 @@ def load_data_and_model(dataset, dataset_path, model_path,
             
     elif dataset == 'lightning':
         est_name = 'Neural Network'
-        train_df = pd.read_csv(os.path.join(dataset_path, 'lightning_data.csv'))
+        train_df = pd.read_csv(os.path.join(dataset_path, 'lightning_dataset.csv'))
         model = load(os.path.join(model_path,'NN_classification.joblib'))
         features  = [f for f in train_df.columns if 'label' not in f]
         X = train_df[features]
@@ -120,9 +118,7 @@ def load_data_and_model(dataset, dataset_path, model_path,
         
     elif dataset == 'severe_wind':
         est_name = 'NewLogisticRegression'
-        
         fname = os.path.join(model_path,'LogisticRegression_wind_severe_0km_None_first_hour_realtime.joblib')
-        
         data = load(fname)
         # The training dataset is saved with the model.
         model = data['model']
@@ -147,273 +143,13 @@ def load_data_and_model(dataset, dataset_path, model_path,
           
          }
 
-        #groups={}
-        #for key, items in groups_.items():
-        #    groups[key] = [f for f in X.columns if any(v in f for v in items)]
-        
         unique_names = np.unique([f.split('__')[0] for f in X.columns])
         groups = {n : [] for n in unique_names}
         for f in X.columns:
             groups[f.split('__')[0]].append(f)
 
-        
-    if return_dates:
-        return (est_name, model), X, y, dates, fti
-        
-    else: 
-        if return_groups:
-            return (est_name, model), X, y, groups   
-        else:
-            return (est_name, model), X, y 
-    
-    
-def rename(ds, direction):
-    data_vars = [v for v in ds.data_vars if 'pass' in v]
-    mapper = {v : f'{direction}_{v}' for v in data_vars}
-    
-    ds = ds.rename(mapper)
-    
-    return ds
-
-def load_xai_data(dataset, option='original', adjust_scores=True, kept_all=False,
-            basePath = '/work/mflora/explainability_work/new_results',
-            all_methods = ['backward_singlepass', 
-                           'forward_singlepass', 
-                       'backward_multipass', 
-                       'forward_multipass', 
-                       'sage',  
-                       'shap_sum',    
-                       'ale_variance',
-                       'lime', 
-                       'tree_interpreter',
-                       'gini', 
-                       'coefs', 
-                      ]
-            ):
-    """Loads the XAI output from a given dataset"""
-    #'pd_variance' 
-    
-    methods = all_methods.copy()
-
-    if not kept_all: 
-    
-        if dataset in ['severe_wind', 'lightning']:
-            # Remove the RF-based XAI
-            try:
-                methods.remove('gini')
-                methods.remove('tree_interpreter')
-            except:
-                pass
-        if dataset in ['lightning', 'road_surface']:
-            # Remove the LR-based XAI
-            try:
-                methods.remove('coefs')
-            except:
-                pass
-    if dataset == 'lightning':
-        name = 'Neural Network'
-    elif dataset == 'new_severe_wind':
-        name =  'NewLogisticRegression'
+    if return_groups:
+        return (est_name, model), X, y, groups   
     else:
-        name = 'Random Forest'
+        return (est_name, model), X, y 
     
-    # Initialize the explainer
-    explainer = skexplain.ExplainToolkit()
-
-    filenames = {'backward_singlepass' : join(basePath, f'perm_imp_rank_backward_{dataset}_{option}.nc'), 
-                 'backward_multipass' : join(basePath, f'perm_imp_rank_backward_{dataset}_{option}.nc'), 
-                 'forward_singlepass' : join(basePath, f'perm_imp_rank_forward_{dataset}_{option}.nc'), 
-                 'forward_multipass' : join(basePath, f'perm_imp_rank_forward_{dataset}_{option}.nc'), 
-                 'sobol_total' : join(basePath, f'sobol_rank_{dataset}_{option}.nc'), 
-                 'sage' : join(basePath, f'sage_rank_{dataset}_{option}.nc'),
-                 'coefs': join(basePath, f'coef_rank_{dataset}_{option}.nc'),
-                 'shap_sum': join(basePath, f'shap_rank_{dataset}_{option}.nc'),
-                 'ale_variance':join(basePath, f'ale_rank_{dataset}_{option}.nc'),
-                 'pd_variance':join(basePath, f'pd_rank_{dataset}_{option}.nc'),
-                 'lime': join(basePath, f'lime_rank_{dataset}_{option}.nc'),
-                 'tree_interpreter': join(basePath, f'ti_rank_{dataset}_{option}.nc'),
-                 'gini': join(basePath, f'gini_rank_{dataset}_{option}.nc')
-                } 
-    results = []
-    methods_kept = []
-    labels_kept = []
-    for method in methods:
-        print(f'Loading {method}...') 
-        try:
-            results.append(explainer.load(filenames[method]))
-            methods_kept.append(method)
-            labels_kept.append(LABELS[method])
-        except Exception as e:
-            ###print(traceback.format_exc())
-            if kept_all:
-                results.append(None)
-                methods_kept.append(method)
-                labels_kept.append(LABELS[method])
-            
-            #print(f'{method} did not load!') 
-
-    return results, methods_kept, labels_kept, name  #, feature_names 
-    
-def to_curve(feature_vals, explain_vals, bins):
-    """
-    Convert local explainability output to a expected 
-    curve like ALE or PD
-    Parameters
-    -------------------------
-        feature (array): input feature values 
-        vals (array): explainability output 
-        bins (numpy.ndarray): Array of bin edges.
-
-    Returns
-    -------------------------
-        numpy.ndarray: Mean explainability values as a curve.
-    """
-    # Separate the explain values into bins and compute the mean value
-    # in each bin.
-    inds = np.digitize(feature_vals, bins=bins) - 1
-    mean_explain_vals = np.array([np.mean(explain_vals[inds == i]) for i in range(len(bins)+1)])
-    mean_explain_vals = 0.5 * (mean_explain_vals[:-1] + mean_explain_vals[1:])
-
-    return mean_explain_vals
-
-def to_dataset(local_ds, method, ale):
-
-    X = local_ds['X']
-    est_name = list(local_ds.data_vars)[0].split('__')[-1]
-    X = pd.DataFrame(X, columns=local_ds.attrs['features'])
-    vals = pd.DataFrame(local_ds[f'{method}_values__{est_name}'].values, columns=X.columns)
-
-    dataset = {}
-    for f in X.columns:
-        feature_vals = X[f]
-        explain_vals = vals[f]
-        bins = ale[f'{f}__bin_values'].values
-        curve = to_curve(feature_vals, explain_vals, bins)
-        dataset[f'{f}__{est_name}__{method}'] = (['n_bootstrap', f'n_bins__{f}'], [curve])
-        dataset[f'{f}__bin_values'] = ([f'n_bins__{f}'], bins)
-    
-    return xr.Dataset(dataset)
-
-def load_xai_curves(dataset, option='original', basePath = '/work/mflora/explainability_work/new_results',):
-    TO_CURVES = ['shap']#, 'lime', 'tree_interpreter']
-    
-    filenames = { 
-                 'shap': join(basePath, f'shap_{dataset}_{option}.nc'),
-                 'ale':join(basePath, f'ale_{dataset}_{option}.nc'),
-                 'pd':join(basePath, f'pd_{dataset}_{option}.nc'),
-                 'lime': join(basePath, f'lime_{dataset}_{option}.nc'),
-                 'tree_interpreter': join(basePath, f'ti_{dataset}_{option}.nc'),
-                } 
-    
-    explainer = skexplain.ExplainToolkit()
-    ale = explainer.load(filenames['ale'])
-    #pd = explainer.load(filenames['pd'])
-    
-    results = [ale]#, pd]
-    methods_kept = ['ale']#, 'pd']
-    labels_kept = ['ALE']#, 'PD'] 
-    
-    for method in TO_CURVES:
-        try:
-            data = explainer.load(filenames[method])
-            dataset = to_dataset(data, method, ale)
-
-            methods_kept.append(method)
-            results.append(dataset)
-            labels_kept.append(LABELS[method])
-        except:
-            continue
-    
-    return results, methods_kept, labels_kept
-   
-
-def load_grouped_xai_data(dataset, option='original', adjust_scores=True, kept_all=False,
-            basePath = '/work/mflora/explainability_work/new_results',
-            all_methods = [
-                       'sage',  
-                       'shap_sum',    
-                       'ale_variance',
-                       'lime', 
-                       'tree_interpreter',
-                       'gini', 
-                       'coefs', 
-                      ]
-            ):
-    """Loads the Grouped XAI output from a given dataset"""
-    
-    methods = all_methods.copy()
-
-    if not kept_all: 
-        if dataset in ['severe_wind', 'lightning']:
-            # Remove the RF-based XAI
-            try:
-                methods.remove('gini')
-                methods.remove('tree_interpreter')
-            except:
-                pass
-        if dataset in ['lightning', 'road_surface']:
-            # Remove the LR-based XAI
-            try:
-                methods.remove('coefs')
-            except:
-                pass
-            
-    if dataset == 'severe_wind':
-        name =  'LogisticRegression'
-    elif dataset == 'lightning':
-        name = 'Neural Network'
-    elif dataset == 'new_severe_wind':
-        name =  'NewLogisticRegression'
-    else:
-        name = 'Random Forest'
-    
-    # Initialize the explainer
-    explainer = skexplain.ExplainToolkit()
-
-    filenames = {
-                 'sage' : join(basePath, f'grouped_sage_rank_{dataset}_{option}.nc'),
-                 'coefs': join(basePath, f'coef_{dataset}_{option}.nc'),
-                 'shap_sum': join(basePath, f'shap_{dataset}_{option}.nc'),
-                 'ale':join(basePath, f'ale_{dataset}_{option}.nc'),
-                 'pd':join(basePath, f'pd_{dataset}_{option}.nc'),
-                 'lime': join(basePath, f'lime_{dataset}_{option}.nc'),
-                 'tree_interpreter': join(basePath, f'ti_{dataset}_{option}.nc'),
-                 'gini': join(basePath, f'gini_rank_{dataset}_{option}.nc')
-                } 
-    results = []
-    methods_kept = []
-    labels_kept = []
-    for method in methods:
-        print(f'Loading {method}...') 
-        try:
-            results.append(explainer.load(filenames[method]))
-            methods_kept.append(method)
-            labels_kept.append(LABELS[method])
-        except Exception as e:
-            ###print(traceback.format_exc())
-            if kept_all:
-                results.append(None)
-                methods_kept.append(method)
-                labels_kept.append(LABELS[method])
-            
-            #print(f'{method} did not load!') 
-
-    return results, methods_kept, labels_kept, name  #, feature_names 
-    
-    
-import xarray as xr
-def to_xarray(shap_data, estimator_name, feature_names=None):
-    dataset={}
-    
-    shap_values = shap_data['shap_values']
-    bias = shap_data['bias']
-    
-    dataset[f'shap_values__{estimator_name}'] = (['n_examples', 'n_features'], shap_values)
-    dataset[f'bias__{estimator_name}'] = (['n_examples'], bias.astype(np.float64))
-    dataset['X'] = (['n_examples', 'n_features'], shap_data['X'])
-    dataset['y'] = (['n_examples'], shap_data['targets'])
-    
-    ds = xr.Dataset(dataset)
-    #ds.attrs['features'] = feature_names
-    
-    return ds 
