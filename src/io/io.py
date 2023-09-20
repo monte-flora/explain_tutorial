@@ -108,7 +108,7 @@ def load_data_and_model(dataset, dataset_path, model_path, return_groups=False):
     if dataset == 'road_surface':
         est_name = 'Random Forest'
         train_df = pd.read_csv(os.path.join(dataset_path, 'road_surface_dataset.csv'))
-        calibrator =  load(os.path.join(model_path, 'JTTI_ProbSR_RandomForest_Isotonic.pkl'))
+        ###calibrator =  load(os.path.join(model_path, 'JTTI_ProbSR_RandomForest_Isotonic.pkl'))
         model = load(os.path.join(model_path,'JTTI_ProbSR_RandomForest.pkl'))
         
         X = train_df[PREDICTOR_COLUMNS].astype(float)
