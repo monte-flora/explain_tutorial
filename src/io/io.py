@@ -15,6 +15,7 @@ import zipfile
 from joblib import load
 import pandas as pd
 import numpy as np
+import skexplain
 
 # Internal packages
 from ..common.calibration_classifier import CalibratedClassifier
@@ -107,12 +108,16 @@ def load_data_and_model(dataset, dataset_path, model_path, return_groups=False):
     """
     if dataset == 'road_surface':
         est_name = 'Random Forest'
-        train_df = pd.read_csv(os.path.join(dataset_path, 'road_surface_dataset.csv'))
         ###calibrator =  load(os.path.join(model_path, 'JTTI_ProbSR_RandomForest_Isotonic.pkl'))
         model = load(os.path.join(model_path,'JTTI_ProbSR_RandomForest.pkl'))
         
-        X = train_df[PREDICTOR_COLUMNS].astype(float)
-        y = train_df[TARGET_COLUMN].astype(float).values
+        try: 
+            train_df = pd.read_csv(os.path.join(dataset_path, 'road_surface_dataset.csv'),)
+     
+            X = train_df[PREDICTOR_COLUMNS].astype(float)
+            y = train_df[TARGET_COLUMN].astype(float).values
+        except:
+            X,y = skexplain.load_data() 
         
         groups = {'Temperature': ['dwpt2m', 'sfc_temp', 'temp2m', 'hrrr_dT'],
                   
